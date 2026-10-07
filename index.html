@@ -267,7 +267,8 @@ const e1rm = (w, r, q) => w * (1 + ((r || 0) + (q || 0)) / 30);
 let program = LS.get("program", null);
 if (!program || program.version !== PROGRAM_VERSION) program = clone(DEFAULT_PROGRAM);
 const S = {
-  settings: Object.assign({startDate: START_DEFAULT, bw: 82, place: "sea", e1rm: {}}, LS.get("settings", {})),
+  settings: Object.assign({startDate: START_DEFAULT, bw: 82, place: "sea", e1rm: {}, sync: {repo: "Andrejs-G/grif-log", last: null, error: null}}, LS.get("settings", {})),
+  adjust: LS.get("adjust", null), syncing: false,
   sessions: LS.get("sessions", null),
   draft: LS.get("draft", null),
   view: "home", edit: null, confirm: null, timer: null, heavyWatch: false, importOpen: false
@@ -322,6 +323,13 @@ function lastFor(exId){
   return null;
 }
 function suggest(ex, t, w, last){
+  const base = suggestPlan(ex, t, w, last), a = S.adjust && S.adjust.ex && S.adjust.ex[ex.id];
+  if (!a || w < (S.adjust.from_week || 1)) return base;
+  const note = a.note ? "Разбор: " + a.note : "";
+  if (num(a.w) != null) return {w: num(a.w), up: false, hint: note || `Разбор: рабочий вес ${fmtW(num(a.w))} кг.`, coach: true};
+  return {...base, hint: [base.hint, note].filter(Boolean).join(" "), coach: !!note};
+}
+function suggestPlan(ex, t, w, last){
   const W = WEEKS[w-1];
   if (t.main) {
     if (ex.id === "pullup") return {w: t.w, up:false, hint: t.load ? `План: свой вес ${fmtW(S.settings.bw)} + груз ${fmtW(t.load)} кг.` : `План: свой вес, без груза. Когда легко, добавляйте 2,5 кг.`};
@@ -406,6 +414,8 @@ function viewHome(){
     ${weekBar(pre ? 0 : w)}
     <p class="note">${pre ? `Программа начинается в понедельник ${new Date(S.settings.startDate + "T12:00:00").toLocaleDateString("ru-RU", {day:"numeric", month:"long"})}. До старта можно тренироваться по неделе 1.` : esc(W.note)}</p>
   </section>`;
+  h += syncBanner();
+  if (S.adjust && S.adjust.summary) h += `<section class="card"><div class="row" style="justify-content:space-between"><b>Разбор тренировок</b><span class="muted small num">${S.adjust.updated ? fmtDate(S.adjust.updated) : ""}</span></div><p class="note" style="color:var(--ink)">${esc(S.adjust.summary)}</p></section>`;
   if (S.draft) {
     const done = S.draft.ex.reduce((a,e) => a + e.sets.filter(s => s.done).length, 0);
     const all = S.draft.ex.reduce((a,e) => a + e.sets.length, 0);
@@ -449,7 +459,7 @@ function viewWorkout(){
       <p class="small muted">Запас ${esc(t.rir)} повт. · ${t.rest ? "отдых " + fmtRest(t.rest) : "сразу к следующему"}${sup ? ` · <span class="ss">${sup}</span>` : ""}</p>
       ${e.note ? `<p class="note">${esc(e.note)}</p>` : ""}
       ${e.last ? `<p class="small">Прошлый раз, ${fmtDate(e.last.date)}: <span class="num">${e.last.sets.map(s => (num(s.w) != null ? fmtW(num(s.w)) + "×" : "") + (s.r || "?") + (s.q !== "" && s.q != null ? "@" + s.q : "")).join(", ")}</span></p>` : ""}
-      ${e.hint ? `<p class="hint ${e.up ? "up" : ""}">${esc(e.hint)}</p>` : ""}
+      ${e.hint ? `<p class="hint ${e.up || e.coach ? "up" : ""}">${esc(e.hint)}</p>` : ""}
       <div class="sets"><div class="set-h" aria-hidden="true"><span></span><span>кг</span><span>повт</span><span>запас</span><span></span></div>`;
     e.sets.forEach((s, j) => {
       h += `<div class="set ${s.done ? "done" : ""}">
@@ -553,6 +563,7 @@ function viewProgram(){
     });
     h += `<button class="linkbtn" data-act="add-ex" data-day="${esc(d.id)}">+ упражнение</button></section>`;
   }
+  h += viewSync();
   h += `<h2>Резервная копия</h2><section class="card">
     <p class="note">Записи хранятся только на этом телефоне. Раз в неделю сохраняйте копию в «Файлы» или Заметки: если удалить иконку приложения, записи пропадут.</p>
     <div class="row"><button class="btn" data-act="export">Сохранить копию</button><button class="btn" data-act="copy">Скопировать текстом</button><button class="btn" data-act="import-open">Восстановить</button></div>
@@ -581,7 +592,7 @@ function startWorkout(dayId){
       const t = target(e, w), last = lastFor(e.id), sg = suggest(e, t, w, last);
       if (S.heavyWatch && !t.light) t.rir = "3";
       return {id: e.id, grp: e.grp, name: e.main ? e.name : e.name, alt: e.alt || "", note: e.note || "", inc: e.inc,
-        target: {sets:t.sets, reps:t.reps, rir:t.rir, rest:t.rest}, last, hint: sg.hint, up: sg.up,
+        target: {sets:t.sets, reps:t.reps, rir:t.rir, rest:t.rest}, last, hint: sg.hint, up: sg.up, coach: !!sg.coach,
         sets: Array.from({length: t.sets}, () => ({w: sg.w, r: "", q: "", done: false}))};
     })
   };
@@ -591,13 +602,120 @@ function startWorkout(dayId){
 function finishWorkout(){
   const d = S.draft; if (!d) return;
   const s = clone(d); s.finishedAt = Date.now();
-  s.ex.forEach(e => { delete e.last; delete e.hint; delete e.up; delete e.note; delete e.alt; });
+  s.ex.forEach(e => { delete e.last; delete e.hint; delete e.up; delete e.coach; delete e.note; delete e.alt; });
   S.sessions = S.sessions.filter(x => x.id !== s.id).concat(s);
   S.draft = null; LS.set("draft", null); saveAll();
   S.timer = null; S.heavyWatch = false; S.view = "home"; render(); window.scrollTo(0,0);
   toast("Тренировка сохранена");
+  setTimeout(() => sync(false), 1500);
 }
-function exportText(){ return JSON.stringify({app:"grif", version:PROGRAM_VERSION, exported:new Date().toISOString(), settings:S.settings, program, sessions:S.sessions}); }
+function exportText(pretty){
+  const settings = clone(S.settings); delete settings.sync;
+  const o = {app:"grif", version:PROGRAM_VERSION, settings, program, sessions:sortedSessions().reverse()};
+  if (!pretty) o.exported = new Date().toISOString();
+  return pretty ? JSON.stringify(o, null, 1) : JSON.stringify(o);
+}
+/* ===== синхронизация с приватным репозиторием GitHub ===== */
+const csvCell = v => { const t = String(v ?? ""); return /[",\n;]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
+function csvText(){
+  const rows = [["date","week","block","day","exercise_id","exercise","set","weight_kg","reps","rir","heavy_watch","session_note"]];
+  for (const s of sortedSessions().reverse()) for (const e of s.ex || []) e.sets.forEach((x, j) => {
+    if (x.done) rows.push([s.date, s.week, s.block || "", s.dayName, e.id, e.name, j + 1, num(x.w) ?? "", x.r, x.q ?? "", s.heavy ? 1 : 0, s.note || ""]);
+  });
+  return rows.map(r => r.map(csvCell).join(",")).join("\n") + "\n";
+}
+const b64 = str => { const b = new TextEncoder().encode(str); let bin = ""; for (let i = 0; i < b.length; i += 0x8000) bin += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000)); return btoa(bin); };
+const unb64 = str => new TextDecoder().decode(Uint8Array.from(atob(String(str).replace(/\s/g, "")), c => c.charCodeAt(0)));
+class SyncError extends Error {}
+async function gh(path, opts){
+  const repo = (S.settings.sync.repo || "").trim().replace(/^https?:\/\/github\.com\//, "").replace(/\/$/, "");
+  let r;
+  try {
+    r = await fetch(`https://api.github.com/repos/${repo}/contents/${path}`, Object.assign({cache: "no-store"}, opts, {headers: Object.assign({
+      "Authorization": "Bearer " + LS.get("token", ""), "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"},
+      opts && opts.body ? {"Content-Type": "application/json"} : {})}));
+  } catch(e) { throw new SyncError("Нет связи с GitHub. Проверьте интернет."); }
+  if (r.status === 401) throw new SyncError("Ключ доступа не подходит или истёк. Создайте новый и вставьте его.");
+  if (r.status === 403) throw new SyncError("У ключа нет права записи. Нужно разрешение Contents: Read and write.");
+  if (r.status === 404 && opts && opts.method === "PUT") throw new SyncError("Репозиторий не найден, или ключ к нему не допущен. Проверьте имя репозитория.");
+  return r;
+}
+async function readFile(path){
+  const r = await gh(path);
+  if (r.status === 404) return null;
+  if (!r.ok) throw new SyncError("GitHub ответил ошибкой " + r.status + ". Попробуйте позже.");
+  const j = await r.json();
+  return {sha: j.sha, text: j.content != null ? unb64(j.content) : null};
+}
+async function writeFile(path, text, msg){
+  const cur = await readFile(path);
+  if (cur && cur.text === text) return false;
+  const r = await gh(path, {method: "PUT", body: JSON.stringify({message: msg, content: b64(text), sha: cur ? cur.sha : undefined})});
+  if (!r.ok) throw new SyncError("Не удалось записать файл, ошибка " + r.status + ".");
+  return true;
+}
+function applyAdjust(a){
+  if (!a || typeof a !== "object") return;
+  const prev = JSON.stringify(S.adjust);
+  S.adjust = a; LS.set("adjust", a);
+  if (a.e1rm && typeof a.e1rm === "object") for (const id of Object.keys(MAIN)) {
+    const arr = a.e1rm[id]; if (!Array.isArray(arr)) continue;
+    S.settings.e1rm[id] = S.settings.e1rm[id] || [null, null, null];
+    arr.forEach((v, k) => { if (num(v) != null && k < 3) S.settings.e1rm[id][k] = num(v); });
+  }
+  return prev !== JSON.stringify(a);
+}
+async function sync(manual){
+  if (S.syncing) return;
+  if (!LS.get("token", "") || !S.settings.sync.repo) { if (manual) toast("Сначала вставьте ключ доступа"); return; }
+  if (!manual && navigator.onLine === false) return;
+  S.syncing = true; paintSync();
+  try {
+    const d = todayISO();
+    await writeFile("log/grif-log.json", exportText(true), "Журнал " + d);
+    await writeFile("log/sets.csv", csvText(), "Подходы " + d);
+    const a = await readFile("plan/adjustments.json");
+    let fresh = false;
+    if (a && a.text) { try { fresh = applyAdjust(JSON.parse(a.text)); } catch(e) {} }
+    S.settings.sync.last = new Date().toISOString(); S.settings.sync.error = null;
+    saveAll();
+    if (manual || fresh) toast(fresh ? "Синхронизировано. Есть новый разбор тренировок." : "Синхронизировано");
+  } catch(e) {
+    S.settings.sync.error = e instanceof SyncError ? e.message : "Не получилось синхронизировать: " + (e && e.message || e);
+    saveAll();
+    if (manual) toast(S.settings.sync.error);
+  } finally {
+    S.syncing = false;
+    const a = document.activeElement;
+    if (S.view !== "workout" && !(a && /INPUT|TEXTAREA/.test(a.tagName))) render(); else paintSync();
+  }
+}
+function daysSinceSync(){ return S.settings.sync.last ? Math.floor((Date.now() - Date.parse(S.settings.sync.last)) / 864e5) : null; }
+function fmtWhen(iso){ const d = new Date(iso); return d.toLocaleDateString("ru-RU", {day:"numeric", month:"short"}) + ", " + d.toLocaleTimeString("ru-RU", {hour:"2-digit", minute:"2-digit"}); }
+function syncStatus(){
+  if (S.syncing) return "Синхронизирую…";
+  const last = S.settings.sync.last ? "Последняя синхронизация: " + fmtWhen(S.settings.sync.last) + "." : "Синхронизации ещё не было.";
+  return S.settings.sync.error ? last + " " + S.settings.sync.error : last;
+}
+function paintSync(){ document.querySelectorAll("[data-sync-status]").forEach(el => el.textContent = syncStatus()); }
+function syncBanner(){
+  if (!LS.get("token", "")) return "";
+  const d = daysSinceSync();
+  if (d != null && d < 7 && !S.settings.sync.error) return "";
+  const why = d == null ? "Записи ещё ни разу не отправлялись на разбор." : S.settings.sync.error && d < 7 ? S.settings.sync.error : `Последняя синхронизация ${d} дн. назад.`;
+  return `<section class="card" style="border-color:var(--warn)"><b>Пора синхронизировать</b><p class="note">${esc(why)} Когда будет интернет, нажмите кнопку: записи уйдут на еженедельный разбор, а сюда придут рекомендации.</p><button class="btn primary center" data-act="sync">Синхронизировать</button></section>`;
+}
+function viewSync(){
+  const has = !!LS.get("token", "");
+  return `<h2>Синхронизация и разбор</h2><section class="card">
+    <p class="note">Раз в неделю записи отправляются в ваш приватный репозиторий на GitHub. Claude делает по ним разбор весов и подходов, а рекомендации приходят обратно в приложение. Без интернета всё работает как раньше, синхронизация пройдёт, когда появится сеть.</p>
+    <label class="lbl2" for="sync-repo">Репозиторий для записей<input id="sync-repo" data-f="sync-repo" autocapitalize="off" autocorrect="off" spellcheck="false" value="${esc(S.settings.sync.repo)}"></label>
+    <label class="lbl2" for="sync-token">Ключ доступа GitHub${has ? " (сохранён)" : ""}<input id="sync-token" data-f="sync-token" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${has ? "••••••• вставьте новый, чтобы заменить" : "github_pat_…"}"></label>
+    <p class="small muted" data-sync-status aria-live="polite">${esc(syncStatus())}</p>
+    <div class="row"><button class="btn primary" data-act="sync">Синхронизировать</button>${has ? `<button class="btn ghost danger" data-act="sync-forget">${S.confirm === "forget" ? "Точно удалить ключ?" : "Удалить ключ"}</button>` : ""}</div>
+    <p class="note">Ключ хранится только на этом телефоне и в копию записей не попадает.</p>
+  </section>`;
+}
 function doImport(txt){
   let data; try { data = JSON.parse(txt); } catch(e){ toast("Это не похоже на копию: не получилось прочитать текст."); return; }
   if (!data || !Array.isArray(data.sessions)) { toast("В копии нет тренировок."); return; }
@@ -645,7 +763,7 @@ function nextLabel(i, j){
 document.addEventListener("click", ev => {
   const b = ev.target.closest("[data-act]"); if (!b) return;
   const act = b.dataset.act, i = +b.dataset.i, j = +b.dataset.j;
-  if (S.confirm && !["finish","discard","del-ex","del-sess","reset-program"].includes(act)) S.confirm = null;
+  if (S.confirm && !["finish","discard","del-ex","del-sess","reset-program","sync-forget"].includes(act)) S.confirm = null;
   switch (act) {
     case "tab": S.view = b.dataset.view; S.edit = null; render(); window.scrollTo(0,0); break;
     case "home": S.view = "home"; render(); break;
@@ -694,6 +812,8 @@ document.addEventListener("click", ev => {
       break;
     }
     case "import-open": S.importOpen = !S.importOpen; render(); break;
+    case "sync": sync(true); break;
+    case "sync-forget": if (S.confirm === "forget") { LS.set("token", null); S.confirm = null; S.settings.sync.error = null; saveAll(); render(); toast("Ключ удалён"); } else { S.confirm = "forget"; render(); armConfirm(); } break;
     case "import": {
       const f = document.getElementById("importfile").files[0], t = document.getElementById("importtext").value.trim();
       if (f) { const r = new FileReader(); r.onload = () => doImport(String(r.result)); r.readAsText(f); }
@@ -720,6 +840,8 @@ document.addEventListener("change", ev => {
   const t = ev.target, f = t.dataset && t.dataset.f; if (!f) return;
   if (f === "heavy") { S.heavyWatch = t.checked; }
   if (f === "start" && t.value) { S.settings.startDate = t.value; saveAll(); render(); }
+  if (f === "sync-repo") { S.settings.sync.repo = t.value.trim(); S.settings.sync.error = null; saveAll(); }
+  if (f === "sync-token" && t.value.trim()) { LS.set("token", t.value.trim()); t.value = ""; S.settings.sync.error = null; saveAll(); render(); toast("Ключ сохранён на телефоне"); sync(true); }
   if (f === "bw") { const v = num(t.value); if (v) { S.settings.bw = v; saveAll(); render(); } }
   if (f === "e1") { const id = t.dataset.id, k = +t.dataset.k, v = num(t.value); S.settings.e1rm[id] = S.settings.e1rm[id] || [null,null,null]; S.settings.e1rm[id][k] = v; saveAll(); render(); toast(v ? "Веса пересчитаны" : "Вернул веса из таблицы"); }
 });
@@ -759,6 +881,8 @@ document.getElementById("timer").addEventListener("click", ev => {
 if (S.draft) S.view = "workout";
 render();
 try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch(e){}
+window.addEventListener("online", () => sync(false));
+setTimeout(() => { const d = daysSinceSync(); if (d == null || d >= 1 || S.settings.sync.error) sync(false); }, 2000);
 </script>
 
 <script>
