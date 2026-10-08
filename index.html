@@ -110,8 +110,8 @@ textarea{width:100%;padding:10px;min-height:70px}
 .timer button{border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:10px 12px;font-weight:600}
 /* tab bar */
 .tabs{position:fixed;left:0;right:0;bottom:0;z-index:10;background:var(--surface);border-top:1px solid var(--line);padding:6px 8px calc(6px + env(safe-area-inset-bottom,0px));display:flex;justify-content:center}
-.tabs .in{display:grid;grid-template-columns:repeat(4,1fr);max-width:560px;width:100%}
-.tabs button{background:none;border:0;padding:10px 2px;font-weight:600;font-size:14px;color:var(--muted)}
+.tabs .in{display:grid;grid-template-columns:repeat(5,1fr);max-width:560px;width:100%}
+.tabs button{background:none;border:0;padding:10px 0;font-weight:600;font-size:13px;color:var(--muted)}
 .tabs button[aria-current="page"]{color:var(--accent)}
 /* history */
 .sess summary{list-style:none;display:flex;justify-content:space-between;gap:10px;cursor:pointer}
@@ -144,6 +144,32 @@ select{padding:10px;font-size:16px}
 .wtable th:first-child,.wtable td:first-child{text-align:left}
 .wtable tr.now td{font-weight:700;color:var(--accent)}
 .scroll{overflow-x:auto}
+/* food */
+.pbar{display:block;height:10px;border-radius:5px;background:var(--bg);border:1px solid var(--line);overflow:hidden}
+.pbar i{display:block;height:100%;background:var(--ok)}
+.pbar.thin{height:6px}.pbar.thin i{background:var(--accent)}
+.food-mini{display:flex;flex-direction:column;gap:6px}
+.food-mini .x{font-size:14px;color:var(--muted);font-weight:400}
+.big{font-family:var(--display);font-size:34px;font-weight:800;line-height:1}
+.big small{font-size:16px;font-weight:600;color:var(--muted)}
+.macros{display:flex;gap:14px;flex-wrap:wrap;font-size:14px;color:var(--muted)}
+.macros b{color:var(--ink)}
+.fgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.ftile{display:flex;flex-direction:column;gap:2px;text-align:left;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--surface);min-width:0}
+.ftile b{font-size:16px}
+.ftile span{font-size:13px;color:var(--muted);line-height:1.3}
+.ftile:active{background:var(--ok-bg)}
+.ftile.plate{border-color:var(--accent)}
+.ftile.editing{border-style:dashed}
+.seg.mini{padding:2px;gap:2px}.seg.mini button{padding:6px 12px}
+.frow{display:grid;grid-template-columns:auto 1fr auto auto;gap:8px;align-items:center;padding:6px 0;border-top:1px solid var(--line)}
+.frow:first-child{border-top:0}
+.frow .nm{min-width:0;font-size:15px}
+.xbtn{border:0;background:none;color:var(--muted);font-size:16px;padding:6px}
+.step{width:40px;height:40px;border-radius:10px;border:1px solid var(--line);background:var(--bg);font-size:20px;font-weight:700}
+.wweeks{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:6px}
+.wweeks span{display:flex;flex-direction:column;align-items:center;background:var(--bg);border-radius:10px;padding:6px 4px}
+.wweeks small{font-size:12px;color:var(--muted)}
 /* technique */
 .tech{border-top:1px solid var(--line);padding-top:8px}
 .tech summary{cursor:pointer;color:var(--accent);font-weight:600;font-size:15px;list-style:none}
@@ -529,6 +555,140 @@ const S = {
 };
 if (!S.sessions) { S.sessions = clone(SEED_SESSIONS); LS.set("sessions", S.sessions); }
 const $app = document.getElementById("app");
+/* ===== Еда: порции рукой, быстрые кнопки, тарелки, вес ===== */
+// p белок, c углеводы, f жиры (г) на 1 порцию; ккал = 4p + 4c + 9f
+const FOODS = [
+  {id:"palm-meat", g:"hand", name:"Ладонь мяса или птицы", short:"Мясо", hint:"кусок размером и толщиной с ладонь", p:30, c:0, f:8},
+  {id:"palm-fish", g:"hand", name:"Ладонь рыбы", short:"Рыба", hint:"кусок с ладонь", p:28, c:0, f:4},
+  {id:"fist-carb", g:"hand", name:"Кулак гарнира", short:"Гарнир", hint:"рис, макароны, картофель, каша", p:5, c:30, f:1},
+  {id:"fist-veg", g:"hand", name:"Кулак овощей", short:"Овощи", hint:"салат, тушёные овощи", p:1.5, c:5, f:0},
+  {id:"thumb-fat", g:"hand", name:"Палец масла или соуса", short:"Жир", hint:"масло, майонез, сливочный соус", p:0, c:0, f:10},
+  {id:"fruit", g:"hand", name:"Фрукт", short:"Фрукт", hint:"яблоко, апельсин, горсть ягод", p:1, c:20, f:0},
+  {id:"whey", g:"quick", name:"Протеин, 1 мерная", short:"Протеин", hint:"на воде", p:24, c:3, f:1.5},
+  {id:"milk", g:"quick", name:"Молоко 0,5 л", short:"Молоко 0,5 л", hint:"2,5%", p:15, c:24, f:12.5},
+  {id:"tvorog", g:"quick", name:"Творог 200 г", short:"Творог", hint:"5%", p:34, c:6, f:10},
+  {id:"egg", g:"quick", name:"Яйцо", short:"Яйцо", hint:"1 шт", p:6.5, c:0.5, f:5},
+  {id:"bread", g:"quick", name:"Хлеб, ломтик", short:"Хлеб", hint:"1 ломтик", p:3, c:15, f:1},
+  {id:"banana", g:"quick", name:"Банан", short:"Банан", hint:"1 шт", p:1.3, c:27, f:0.4},
+  {id:"nuts", g:"quick", name:"Орехи, горсть", short:"Орехи", hint:"около 30 г", p:5, c:5, f:16},
+  {id:"kefir", g:"quick", name:"Кефир или йогурт 250 мл", short:"Кефир", hint:"стакан", p:8, c:12, f:6},
+  {id:"soup", g:"quick", name:"Тарелка супа", short:"Суп", hint:"с мясом", p:8, c:15, f:6},
+  {id:"oats", g:"quick", name:"Каша, порция", short:"Каша", hint:"60 г сухой крупы", p:7.5, c:36, f:4},
+  {id:"sweet", g:"quick", name:"Сладкое", short:"Сладкое", hint:"печенье, батончик", p:3, c:30, f:10},
+  {id:"soda", g:"quick", name:"Сок или сладкий напиток 0,3 л", short:"Сок", hint:"0,3 л", p:0, c:30, f:0}
+];
+const FOOD = Object.fromEntries(FOODS.map(x => [x.id, x]));
+const kcalOf = x => 4*x.p + 4*x.c + 9*x.f;
+const DEFAULT_PLATES = [
+  {id:"galley", name:"Обед с камбуза", items:[["palm-meat",1],["fist-carb",1.5],["fist-veg",1],["thumb-fat",1]]},
+  {id:"galley-big", name:"Большая тарелка", items:[["palm-meat",1.5],["fist-carb",2],["fist-veg",1],["thumb-fat",1.5]]},
+  {id:"breakfast", name:"Завтрак: 3 яйца и хлеб", items:[["egg",3],["bread",2],["thumb-fat",0.5]]},
+  {id:"shake", name:"Коктейль: протеин, молоко, банан", items:[["whey",1],["milk",1],["banana",1]]}
+];
+let food = LS.get("food", {});        // {"YYYY-MM-DD": [{i, q, t, p?}]}
+let weights = LS.get("weights", {});  // {"YYYY-MM-DD": kg}
+let plates = LS.get("plates", null) || clone(DEFAULT_PLATES);
+const FS = {day: null, half: false, builder: null, editPlates: false};
+const fmtG = v => String(Math.round(v)).replace(".", ",");
+const fmtQ = q => q === 0.5 ? "½" : String(q).replace(".5", "½").replace(/^0½$/, "½");
+function saveFood(){ LS.set("food", food); LS.set("weights", weights); LS.set("plates", plates); }
+function addDays(iso, n){ const d = new Date(iso + "T12:00:00"); d.setDate(d.getDate() + n); return d.toISOString().slice(0,10); }
+function dayTotals(iso){
+  const t = {p:0, c:0, f:0, k:0};
+  for (const e of food[iso] || []) { const x = FOOD[e.i]; if (!x) continue; t.p += x.p*e.q; t.c += x.c*e.q; t.f += x.f*e.q; }
+  t.k = 4*t.p + 4*t.c + 9*t.f;
+  return t;
+}
+function targets(){ return {p: S.settings.proteinTarget || 150, k: S.settings.kcalTarget || 3000}; }
+function addFood(items, plateName){
+  const iso = FS.day || todayISO(), t = Date.now();
+  food[iso] = food[iso] || [];
+  for (const [i, q] of items) food[iso].push(plateName ? {i, q, t, p: plateName} : {i, q, t});
+  saveFood();
+}
+/* weekly weight: weeks counted from the program start (Monday) */
+function weekIdx(iso){ return Math.floor((Date.parse(iso) - Date.parse(S.settings.startDate)) / (7*864e5)) + 1; }
+function weeklyWeights(){
+  const by = {};
+  for (const [d, kg] of Object.entries(weights)) { const w = weekIdx(d); (by[w] = by[w] || []).push(kg); }
+  return Object.keys(by).map(Number).sort((a,b) => a-b).map(w => ({w, avg: by[w].reduce((a,b) => a+b, 0) / by[w].length, n: by[w].length}));
+}
+function weightAdvice(ws){
+  if (ws.length < 2) return "Взвешивайтесь утром натощак 3–7 раз в неделю. Выводы — по среднему за неделю.";
+  const last = ws[ws.length-1], prev = ws[ws.length-2], d = last.avg - prev.avg;
+  const prev2 = ws.length >= 3 ? ws[ws.length-3] : null;
+  if (prev2 && last.avg - prev.avg <= 0.05 && prev.avg - prev2.avg <= 0.05) return "Вес не растёт 2 недели подряд. Добавьте одну порцию в день: 0,5 л молока и горсть орехов, или кулак гарнира в обед и ужин.";
+  if (d > 0.4) return "Прибавка больше 0,4 кг в неделю. Если талия растёт, уберите одну добавку.";
+  if (d >= 0.1) return "Хороший темп: цель +0,15–0,25 кг в неделю.";
+  return "Пока прибавки нет. Если и на следующей неделе так же, добавьте одну порцию в день.";
+}
+function foodCard(){
+  const iso = todayISO(), T = dayTotals(iso), G = targets(), pct = Math.min(100, T.p / G.p * 100);
+  return `<button class="btn block food-mini" data-act="tab" data-view="food"><span class="row" style="justify-content:space-between"><b>Белок сегодня</b><span class="num">${fmtG(T.p)} / ${G.p} г</span></span>
+    <span class="pbar" aria-hidden="true"><i style="width:${pct}%"></i></span><span class="x num">≈ ${fmtG(T.k)} ккал · углеводы ${fmtG(T.c)} г</span></button>`;
+}
+function viewFood(){
+  const iso = FS.day || todayISO(), isToday = iso === todayISO(), T = dayTotals(iso), G = targets();
+  const pp = Math.min(100, T.p / G.p * 100), kp = Math.min(100, T.k / G.k * 100);
+  let h = header("Еда");
+  h += `<div class="row" style="justify-content:space-between"><button class="btn ghost" data-act="fday" data-d="-1" aria-label="Предыдущий день">‹</button>
+    <b>${isToday ? "Сегодня" : new Date(iso + "T12:00:00").toLocaleDateString("ru-RU", {weekday:"short", day:"numeric", month:"long"})}</b>
+    <button class="btn ghost" data-act="fday" data-d="1" ${isToday ? "disabled" : ""} aria-label="Следующий день">›</button></div>`;
+  h += `<section class="card">
+    <div class="row" style="justify-content:space-between;align-items:baseline"><span class="big num">${fmtG(T.p)}<small> / ${G.p} г белка</small></span><span class="muted small num">${T.p >= G.p ? "цель есть" : "ещё " + fmtG(G.p - T.p) + " г"}</span></div>
+    <span class="pbar" aria-hidden="true"><i style="width:${pp}%"></i></span>
+    <div class="macros num"><span><b>≈ ${fmtG(T.k)}</b> ккал из ${G.k}</span><span>У ${fmtG(T.c)} г</span><span>Ж ${fmtG(T.f)} г</span></div>
+    <span class="pbar thin" aria-hidden="true"><i style="width:${kp}%"></i></span>
+  </section>`;
+  h += `<div class="row" style="justify-content:space-between"><h2>Тарелки</h2><span class="row"><button class="linkbtn" data-act="plate-edit">${FS.editPlates ? "готово" : "изменить"}</button><button class="linkbtn" data-act="plate-new">+ своя</button></span></div>`;
+  if (FS.editPlates) h += `<p class="note">Нажмите тарелку, чтобы изменить её состав.</p>`;
+  if (FS.builder) h += plateBuilder();
+  h += `<div class="fgrid">${plates.map(pl => { const t = plateTotals(pl); return `<button class="ftile plate${FS.editPlates ? " editing" : ""}" data-act="${FS.editPlates ? "plate-open" : "add-plate"}" data-id="${esc(pl.id)}"><b>${esc(pl.name)}</b><span class="num">${fmtG(t.p)} г белка · ≈${fmtG(t.k)} ккал</span></button>`; }).join("")}</div>`;
+  h += `<div class="row" style="justify-content:space-between"><h2>Порции рукой</h2>
+    <div class="seg mini" role="group" aria-label="Размер порции"><button data-act="half" data-v="0" aria-pressed="${!FS.half}">+1</button><button data-act="half" data-v="1" aria-pressed="${FS.half}">+½</button></div></div>`;
+  h += `<div class="fgrid">${FOODS.filter(x => x.g === "hand").map(tile).join("")}</div>`;
+  h += `<h2>Быстро добавить</h2><div class="fgrid">${FOODS.filter(x => x.g === "quick").map(tile).join("")}</div>`;
+  // log of the day, grouped by tap
+  const groups = []; for (const e of food[iso] || []) { const g = groups[groups.length-1]; if (g && g.t === e.t) g.items.push(e); else groups.push({t: e.t, p: e.p, items: [e]}); }
+  h += `<h2>Записано за день</h2><section class="card">`;
+  h += groups.length ? groups.slice().reverse().map(g => { let pr = 0, kc = 0; g.items.forEach(e => { const x = FOOD[e.i]; if (x) { pr += x.p*e.q; kc += kcalOf(x)*e.q; } });
+      const label = g.p ? g.p : g.items.map(e => (e.q !== 1 ? fmtQ(e.q) + " × " : "") + (FOOD[e.i] ? FOOD[e.i].name : e.i)).join(", ");
+      return `<div class="frow"><span class="muted num small">${new Date(g.t).toLocaleTimeString("ru-RU", {hour:"2-digit", minute:"2-digit"})}</span><span class="nm">${esc(label)}</span><span class="num small">${fmtG(pr)} г · ${fmtG(kc)}</span><button class="xbtn" data-act="del-food" data-t="${g.t}" aria-label="Удалить запись">✕</button></div>`; }).join("")
+    : `<p class="note">Пока пусто. Нажмите тарелку или порцию выше: одна кнопка — одна запись.</p>`;
+  h += `</section>`;
+  // weight
+  const ws = weeklyWeights(), last2 = ws.slice(-8);
+  h += `<h2>Вес</h2><section class="card">
+    <label class="lbl2" for="wt">Вес утром${isToday ? "" : ", " + fmtDate(iso)}, кг<input id="wt" data-f="weight" inputmode="decimal" placeholder="${fmtW(S.settings.bw)}" value="${weights[iso] != null ? fmtW(weights[iso]) : ""}"></label>
+    ${last2.length ? `<div class="wweeks num">${last2.map((x, k) => { const d = k ? x.avg - last2[k-1].avg : null; return `<span><small>нед. ${x.w}</small><b>${fmtW(Math.round(x.avg*10)/10)}</b><small>${d == null ? "&nbsp;" : (d >= 0 ? "+" : "") + fmtW(Math.round(d*10)/10)}</small></span>`; }).join("")}</div>` : ""}
+    <p class="note">${esc(weightAdvice(ws))}</p>
+  </section>`;
+  h += `<section class="card"><b>Цели</b>
+    <div class="row"><label class="lbl2" for="tp" style="flex:1">Белок, г/день<input id="tp" data-f="ptarget" inputmode="numeric" value="${G.p}"></label>
+    <label class="lbl2" for="tk" style="flex:1">Калории, ориентир<input id="tk" data-f="ktarget" inputmode="numeric" value="${G.k}"></label></div>
+    <p class="note">Белок 1,8 г на кг веса. Калории — оценка (поддержка ≈ 2750 + 250 на набор), точнее покажет недельный вес. Порции рукой дают точность около ±20%.</p></section>`;
+  return h;
+}
+function tile(x){ return `<button class="ftile" data-act="add-food" data-id="${x.id}"><b>${FS.half ? "+½ " : "+ "}${esc(x.short)}</b><span>${esc(x.hint)}</span><span class="num">${fmtG(x.p*(FS.half ? .5 : 1))} г белка</span></button>`; }
+function plateTotals(pl){ const t = {p:0, k:0}; for (const [i, q] of pl.items) { const x = FOOD[i]; if (x) { t.p += x.p*q; t.k += kcalOf(x)*q; } } return t; }
+function plateBuilder(){
+  const B = FS.builder, t = plateTotals(B);
+  return `<section class="card"><b>${B.edit ? "Изменить тарелку" : "Новая тарелка"}</b>
+    <label class="lbl2" for="pl-name">Название<input id="pl-name" data-f="pl-name" value="${esc(B.name)}" placeholder="Например: макароны по-флотски"></label>
+    <div class="exl">${FOODS.map(x => { const q = (B.items.find(e => e[0] === x.id) || [0,0])[1];
+      return `<div class="it"><div class="nm">${esc(x.name)}<div class="small muted">${esc(x.hint)}</div></div><div class="row" style="flex-wrap:nowrap"><button class="step" data-act="pl-q" data-id="${x.id}" data-d="-0.5" aria-label="Меньше">−</button><span class="num" style="min-width:28px;text-align:center">${q ? fmtQ(q) : "0"}</span><button class="step" data-act="pl-q" data-id="${x.id}" data-d="0.5" aria-label="Больше">+</button></div></div>`; }).join("")}</div>
+    <p class="small num">Итого: ${fmtG(t.p)} г белка · ≈${fmtG(t.k)} ккал</p>
+    <div class="row"><button class="btn primary" data-act="pl-save">Сохранить</button><button class="btn" data-act="pl-cancel">Отмена</button>${B.edit ? `<button class="btn ghost danger" data-act="pl-del">${S.confirm === "pl-del" ? "Точно удалить?" : "Удалить"}</button>` : ""}</div>
+  </section>`;
+}
+function nutritionCsv(){
+  const days = new Set([...Object.keys(food), ...Object.keys(weights)]);
+  const rows = [["date","protein_g","carbs_g","fat_g","kcal","weight_kg","entries"]];
+  for (const d of [...days].sort()) { const T = dayTotals(d), items = (food[d] || []).map(e => `${e.q}x${e.i}`).join(" ");
+    rows.push([d, Math.round(T.p), Math.round(T.c), Math.round(T.f), Math.round(T.k), weights[d] ?? "", items]); }
+  return rows.map(r => r.map(csvCell).join(",")).join("\n") + "\n";
+}
+
 
 /* ===== program logic ===== */
 function daysSinceStart(){ return Math.floor((Date.parse(todayISO()) - Date.parse(S.settings.startDate)) / 864e5); }
@@ -640,7 +800,7 @@ function toast(msg){
 function render(){
   if (S.view === "workout" && !S.draft) S.view = "home";
   const v = S.view;
-  $app.innerHTML = v === "workout" ? viewWorkout() : v === "history" ? viewHistory() : v === "program" ? viewProgram() : v === "tech" ? viewTech() : viewHome();
+  $app.innerHTML = v === "workout" ? viewWorkout() : v === "history" ? viewHistory() : v === "program" ? viewProgram() : v === "tech" ? viewTech() : v === "food" ? viewFood() : viewHome();
   document.getElementById("tabs").hidden = v === "workout";
   document.getElementById("timer").hidden = v !== "workout";
   document.querySelectorAll(".tabs button").forEach(b => b.setAttribute("aria-current", b.dataset.view === v ? "page" : "false"));
@@ -669,6 +829,7 @@ function viewHome(){
     <p class="note">${pre ? `Программа начинается в понедельник ${new Date(S.settings.startDate + "T12:00:00").toLocaleDateString("ru-RU", {day:"numeric", month:"long"})}. До старта можно тренироваться по неделе 1.` : esc(W.note)}</p>
   </section>`;
   h += syncBanner();
+  h += foodCard();
   if (S.adjust && S.adjust.summary) h += `<section class="card"><div class="row" style="justify-content:space-between"><b>Разбор тренировок</b><span class="muted small num">${S.adjust.updated ? fmtDate(S.adjust.updated) : ""}</span></div><p class="note" style="color:var(--ink)">${esc(S.adjust.summary)}</p></section>`;
   if (S.draft) {
     const done = S.draft.ex.reduce((a,e) => a + e.sets.filter(s => s.done).length, 0);
@@ -890,7 +1051,7 @@ function finishWorkout(){
 }
 function exportText(pretty){
   const settings = clone(S.settings); delete settings.sync;
-  const o = {app:"grif", version:PROGRAM_VERSION, settings, program, sessions:sortedSessions().reverse()};
+  const o = {app:"grif", version:PROGRAM_VERSION, settings, program, sessions:sortedSessions().reverse(), food, weights, plates};
   if (!pretty) o.exported = new Date().toISOString();
   return pretty ? JSON.stringify(o, null, 1) : JSON.stringify(o);
 }
@@ -957,6 +1118,7 @@ async function sync(manual){
     const d = todayISO();
     await writeFile("log/grif-log.json", exportText(true), "Журнал " + d);
     await writeFile("log/sets.csv", csvText(), "Подходы " + d);
+    await writeFile("log/nutrition.csv", nutritionCsv(), "Питание и вес " + d);
     const a = await readFile("plan/adjustments.json");
     let fresh = false;
     if (a && a.text) { try { fresh = applyAdjust(JSON.parse(a.text)); } catch(e) {} }
@@ -1004,6 +1166,10 @@ function doImport(txt){
   if (!data || !Array.isArray(data.sessions)) { toast("В копии нет тренировок."); return; }
   const ids = new Set(S.sessions.map(s => s.id)); let n = 0;
   for (const s of data.sessions) if (s && s.id && !ids.has(s.id)) { S.sessions.push(s); n++; }
+  if (data.food && typeof data.food === "object") for (const [d, arr] of Object.entries(data.food)) { const have = new Set((food[d] || []).map(e => e.t + e.i)); food[d] = (food[d] || []).concat((arr || []).filter(e => !have.has(e.t + e.i))); }
+  if (data.weights && typeof data.weights === "object") weights = Object.assign({}, data.weights, weights);
+  if (Array.isArray(data.plates)) { const ids = new Set(plates.map(x => x.id)); plates = plates.concat(data.plates.filter(x => !ids.has(x.id))); }
+  saveFood();
   if (data.settings) S.settings = Object.assign(S.settings, data.settings);
   if (data.program && data.program.version === PROGRAM_VERSION) program = data.program;
   saveAll(); S.importOpen = false; render(); toast(`Восстановлено тренировок: ${n}`);
@@ -1046,7 +1212,7 @@ function nextLabel(i, j){
 document.addEventListener("click", ev => {
   const b = ev.target.closest("[data-act]"); if (!b) return;
   const act = b.dataset.act, i = +b.dataset.i, j = +b.dataset.j;
-  if (S.confirm && !["finish","discard","del-ex","del-sess","reset-program","sync-forget"].includes(act)) S.confirm = null;
+  if (S.confirm && !["finish","discard","del-ex","del-sess","reset-program","sync-forget","pl-del"].includes(act)) S.confirm = null;
   switch (act) {
     case "tab": S.view = b.dataset.view; S.edit = null; render(); window.scrollTo(0,0); break;
     case "home": S.view = "home"; render(); break;
@@ -1096,6 +1262,18 @@ document.addEventListener("click", ev => {
     }
     case "import-open": S.importOpen = !S.importOpen; render(); break;
     case "sync": sync(true); break;
+    case "add-food": { const x = FOOD[b.dataset.id], q = FS.half ? 0.5 : 1; addFood([[x.id, q]]); render(); toast(`+${fmtQ(q)} ${x.short.toLowerCase()} · ${fmtG(x.p*q)} г белка`); break; }
+    case "add-plate": { const pl = plates.find(x => x.id === b.dataset.id); if (pl) { addFood(pl.items, pl.name); render(); toast(`${pl.name}: +${fmtG(plateTotals(pl).p)} г белка`); } break; }
+    case "half": FS.half = b.dataset.v === "1"; render(); break;
+    case "fday": { const n = addDays(FS.day || todayISO(), +b.dataset.d); FS.day = n >= todayISO() ? null : n; render(); break; }
+    case "del-food": { const iso = FS.day || todayISO(), t = +b.dataset.t; food[iso] = (food[iso] || []).filter(e => e.t !== t); saveFood(); render(); break; }
+    case "plate-edit": FS.editPlates = !FS.editPlates; FS.builder = null; render(); break;
+    case "plate-new": FS.builder = {id: "p" + Date.now().toString(36), name: "", items: [], edit: false}; render(); break;
+    case "plate-open": { const pl = plates.find(x => x.id === b.dataset.id); if (pl) { FS.builder = Object.assign(clone(pl), {edit: true}); render(); window.scrollTo(0, 0); } break; }
+    case "pl-q": { const B = FS.builder, id = b.dataset.id, d = +b.dataset.d; const it = B.items.find(e => e[0] === id); if (it) { it[1] = Math.max(0, it[1] + d); } else if (d > 0) B.items.push([id, d]); B.items = B.items.filter(e => e[1] > 0); render(); break; }
+    case "pl-save": { const B = FS.builder; if (!B.items.length) { toast("Добавьте в тарелку хотя бы одну порцию"); break; } const pl = {id: B.id, name: (B.name || "Моя тарелка").trim(), items: B.items}; const k = plates.findIndex(x => x.id === pl.id); k >= 0 ? plates[k] = pl : plates.push(pl); FS.builder = null; saveFood(); render(); toast("Тарелка сохранена"); break; }
+    case "pl-cancel": FS.builder = null; render(); break;
+    case "pl-del": if (S.confirm === "pl-del") { plates = plates.filter(x => x.id !== FS.builder.id); FS.builder = null; S.confirm = null; saveFood(); render(); } else { S.confirm = "pl-del"; render(); armConfirm(); } break;
     case "sync-forget": if (S.confirm === "forget") { LS.set("token", null); S.confirm = null; S.settings.sync.error = null; saveAll(); render(); toast("Ключ удалён"); } else { S.confirm = "forget"; render(); armConfirm(); } break;
     case "import": {
       const f = document.getElementById("importfile").files[0], t = document.getElementById("importtext").value.trim();
@@ -1111,6 +1289,7 @@ function armConfirm(){ clearTimeout(confirmT); confirmT = setTimeout(() => { if 
 document.addEventListener("input", ev => {
   const t = ev.target, f = t.dataset && t.dataset.f; if (!f) return;
   if (f === "heavy") { S.heavyWatch = t.checked; return; }
+  if (f === "pl-name" && FS.builder) { FS.builder.name = t.value; return; }
   if (!S.draft) return;
   if (f === "note") { S.draft.note = t.value; saveDraft(); return; }
   if (f === "w" || f === "r" || f === "q") {
@@ -1123,6 +1302,9 @@ document.addEventListener("change", ev => {
   const t = ev.target, f = t.dataset && t.dataset.f; if (!f) return;
   if (f === "heavy") { S.heavyWatch = t.checked; }
   if (f === "start" && t.value) { S.settings.startDate = t.value; saveAll(); render(); }
+  if (f === "weight") { const iso = FS.day || todayISO(), v = num(t.value); if (v && v > 30 && v < 250) { weights[iso] = v; if (iso === todayISO()) S.settings.bw = v; } else if (!t.value.trim()) delete weights[iso]; saveFood(); saveAll(); render(); }
+  if (f === "ptarget") { const v = parseInt(t.value); if (v > 0) { S.settings.proteinTarget = v; saveAll(); render(); } }
+  if (f === "ktarget") { const v = parseInt(t.value); if (v > 0) { S.settings.kcalTarget = v; saveAll(); render(); } }
   if (f === "sync-repo") { S.settings.sync.repo = t.value.trim(); S.settings.sync.error = null; saveAll(); }
   if (f === "sync-token" && t.value.trim()) { LS.set("token", t.value.trim()); t.value = ""; S.settings.sync.error = null; saveAll(); render(); toast("Ключ сохранён на телефоне"); sync(true); }
   if (f === "bw") { const v = num(t.value); if (v) { S.settings.bw = v; saveAll(); render(); } }
@@ -1153,6 +1335,7 @@ document.addEventListener("submit", ev => {
 document.body.insertAdjacentHTML("beforeend", `
 <nav class="tabs" id="tabs"><div class="in">
   <button data-act="tab" data-view="home">Сегодня</button>
+  <button data-act="tab" data-view="food">Еда</button>
   <button data-act="tab" data-view="history">История</button>
   <button data-act="tab" data-view="tech">Техника</button>
   <button data-act="tab" data-view="program">Программа</button>
