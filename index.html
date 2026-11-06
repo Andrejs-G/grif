@@ -542,6 +542,14 @@ const num = v => { if (v === "" || v == null) return null; const n = parseFloat(
 const fmtW = w => w == null || w === "" ? "" : String(Math.round(w*100)/100).replace(".", ",");
 const range = r => { const m = String(r).match(/(\d+)\D*(\d+)?/); if(!m) return [0,0]; const lo = +m[1], hi = m[2] ? +m[2] : lo; return [lo, hi]; };
 const round = (w, step) => step ? Math.round(w / step) * step : w;
+const LB = 0.45359237;
+const UL = u => u === "lb" ? "lb" : "кг";
+const toU = (kg, u) => kg == null ? null : (u === "lb" ? Math.round(kg / LB * 10) / 10 : kg);
+const fmtU = (kg, u) => kg == null || kg === "" ? "" : fmtW(toU(num(kg), u));
+const fromU = (v, u) => v == null ? null : (u === "lb" ? Math.round(v * LB * 1000) / 1000 : v);
+const snapU = (kg, u) => kg == null || kg === "" ? kg : (u === "lb" ? fromU(round(num(kg) / LB, 2.5), "lb") : round(num(kg), 0.5));
+const hintU = (txt, u) => u === "lb" && txt ? txt.replace(/(\d+(?:,\d+)?) кг/g, (m, v) => num(v) >= 10 ? `${fmtW(round(num(v) / LB, 2.5))} lb (${v} кг)` : fmtW(Math.max(2.5, round(num(v) / LB, 2.5))) + " lb") : txt;
+const unitFor = place => (S.settings.unitByPlace || {})[place] === "lb" ? "lb" : "kg";
 const e1rm = (w, r, q) => w * (1 + ((r || 0) + (q || 0)) / 30);
 
 let program = LS.get("program", null);
@@ -732,7 +740,7 @@ function sortedSessions(){ return [...S.sessions].sort((a,b) => (b.date + String
 function lastFor(exId){
   for (const s of sortedSessions()) {
     const e = (s.ex || []).find(x => x.id === exId);
-    if (e) { const done = e.sets.filter(x => x.done && (num(x.w) != null || x.r)); if (done.length) return {date:s.date, week:s.week, sets:done}; }
+    if (e) { const done = e.sets.filter(x => x.done && (num(x.w) != null || x.r)); if (done.length) return {date:s.date, week:s.week, unit:s.unit || "kg", sets:done}; }
   }
   return null;
 }
@@ -863,6 +871,8 @@ function viewWorkout(){
   const d = S.draft, B = blockOf(Math.max(1, d.week));
   let h = `<div class="wk-head"><button class="btn ghost" style="white-space:nowrap;padding:10px 12px" data-act="home" aria-label="На главную">‹ Назад</button>
     <div style="text-align:right"><div class="ttl">${esc(d.dayName)} · ${esc(d.title || "")}</div><div class="small muted num">Неделя ${d.week} · ${esc(B.name)}${d.heavy ? " · после вахты" : ""} · <span id="elapsed"></span></div></div></div>`;
+  const U = d.unit || "kg";
+  h += `<div class="row" style="justify-content:space-between;margin:4px 0 10px"><span class="small muted">Веса в зале</span><div class="seg mini" role="group" aria-label="Единицы веса"><button data-act="unit" data-v="kg" aria-pressed="${U === "kg"}">кг</button><button data-act="unit" data-v="lb" aria-pressed="${U === "lb"}">lb</button></div></div>`;
   d.ex.forEach((e, i) => {
     const t = e.target, complete = e.sets.length && e.sets.every(s => s.done);
     const [lo, hi] = range(t.reps);
@@ -873,14 +883,14 @@ function viewWorkout(){
       ${altLine ? `<p class="alt">${altLine}</p>` : ""}
       <p class="small muted">Запас ${esc(t.rir)} повт. · ${t.rest ? "отдых " + fmtRest(t.rest) : "сразу к следующему"}${sup ? ` · <span class="ss">${sup}</span>` : ""}</p>
       ${e.note ? `<p class="note">${esc(e.note)}</p>` : ""}
-      ${e.last ? `<p class="small">Прошлый раз, ${fmtDate(e.last.date)}: <span class="num">${e.last.sets.map(s => (num(s.w) != null ? fmtW(num(s.w)) + "×" : "") + (s.r || "?") + (s.q !== "" && s.q != null ? "@" + s.q : "")).join(", ")}</span></p>` : ""}
-      ${e.hint ? `<p class="hint ${e.up || e.coach ? "up" : ""}">${esc(e.hint)}</p>` : ""}
+      ${e.last ? `<p class="small">Прошлый раз, ${fmtDate(e.last.date)}: <span class="num">${(e.last.unit || "kg") !== U ? UL(e.last.unit) + ": " : ""}${e.last.sets.map(s => (num(s.w) != null ? fmtU(s.w, e.last.unit) + "×" : "") + (s.r || "?") + (s.q !== "" && s.q != null ? "@" + s.q : "")).join(", ")}</span></p>` : ""}
+      ${e.hint ? `<p class="hint ${e.up || e.coach ? "up" : ""}">${esc(hintU(e.hint, U))}</p>` : ""}
       ${TECH[e.id] ? `<details class="tech" data-tech="${esc(e.id)}" data-scope="w" ${S.techOpen.has("w:" + e.id) ? "open" : ""}><summary>Техника и ошибки</summary>${techBody(e.id, d.place === "sea" ? "" : "")}</details>` : ""}
-      <div class="sets"><div class="set-h" aria-hidden="true"><span></span><span>кг</span><span>повт</span><span>запас</span><span></span></div>`;
+      <div class="sets"><div class="set-h" aria-hidden="true"><span></span><span>${UL(U)}</span><span>повт</span><span>запас</span><span></span></div>`;
     e.sets.forEach((s, j) => {
       h += `<div class="set ${s.done ? "done" : ""}">
         <span class="n num">${j+1}</span>
-        <input id="w-${i}-${j}" class="num" inputmode="decimal" aria-label="Вес, кг, подход ${j+1}" placeholder="кг" value="${esc(fmtW(num(s.w)))}" data-f="w" data-i="${i}" data-j="${j}">
+        <input id="w-${i}-${j}" class="num" inputmode="decimal" aria-label="Вес, ${UL(U)}, подход ${j+1}" placeholder="${UL(U)}" value="${esc(fmtU(s.w, U))}" data-f="w" data-i="${i}" data-j="${j}">
         <input id="r-${i}-${j}" class="num" inputmode="numeric" aria-label="Повторы, подход ${j+1}" placeholder="${lo === hi ? (lo || "макс") : lo + "–" + hi}" value="${esc(s.r)}" data-f="r" data-i="${i}" data-j="${j}">
         <input id="q-${i}-${j}" class="num rir" inputmode="numeric" aria-label="Запас повторов, подход ${j+1}" placeholder="${esc(String(t.rir).split("–")[0])}" value="${esc(s.q)}" data-f="q" data-i="${i}" data-j="${j}">
         <button class="ck" data-act="done" data-i="${i}" data-j="${j}" aria-pressed="${s.done}" aria-label="Подход ${j+1} выполнен">✓</button>
@@ -928,7 +938,7 @@ function viewHistory(){
   }
   h += `<h2>Тренировки</h2>`;
   h += ss.map(s => `<details class="card sess"><summary><b>${esc(s.dayName)}</b><span class="muted num">${fmtDate(s.date)} · ${s.week ? "нед. " + s.week : "до программы"}</span></summary>
-    <table class="num">${(s.ex || []).map(e => { const done = e.sets.filter(x => x.done); return done.length ? `<tr><td>${esc(e.name)}</td><td>${done.map(x => (num(x.w) != null ? fmtW(num(x.w)) + "×" : "") + x.r + (x.q !== "" && x.q != null ? "@" + x.q : "")).join(", ")}</td></tr>` : ""; }).join("")}</table>
+    <table class="num">${(s.ex || []).map(e => { const done = e.sets.filter(x => x.done); return done.length ? `<tr><td>${esc(e.name)}</td><td>${done.map(x => (num(x.w) != null ? fmtU(x.w, s.unit) + (s.unit === "lb" ? " lb" : "") + "×" : "") + x.r + (x.q !== "" && x.q != null ? "@" + x.q : "")).join(", ")}</td></tr>` : ""; }).join("")}</table>
     ${s.note ? `<p class="note">${esc(s.note)}</p>` : ""}
     ${s.id.startsWith("seed") ? "" : `<button class="linkbtn danger" style="color:var(--p-red);align-self:flex-start" data-act="del-sess" data-id="${esc(s.id)}">${S.confirm === "dels:" + s.id ? "Точно удалить эту тренировку?" : "Удалить"}</button>`}</details>`).join("");
   return h;
@@ -1027,7 +1037,7 @@ function startWorkout(dayId){
   if (S.heavyWatch) { const lastGrp = parseInt(exs[exs.length-1].grp); exs = exs.filter(e => parseInt(e.grp) !== lastGrp); }
   S.draft = {
     id: "s" + Date.now().toString(36), dayId, dayName: day.name, title: day.title, week: w, block: WEEKS[w-1].b,
-    place: S.settings.place, heavy: S.heavyWatch, date: todayISO(), startedAt: Date.now(), note: "",
+    place: S.settings.place, unit: unitFor(S.settings.place), heavy: S.heavyWatch, date: todayISO(), startedAt: Date.now(), note: "",
     ex: exs.map(e => {
       const t = target(e, w), last = lastFor(e.id), sg = suggest(e, t, w, last);
       if (S.heavyWatch && !t.light) t.rir = "3";
@@ -1036,6 +1046,7 @@ function startWorkout(dayId){
         sets: Array.from({length: t.sets}, () => ({w: sg.w, r: "", q: "", done: false}))};
     })
   };
+  if (S.draft.unit === "lb") S.draft.ex.forEach(e => e.sets.forEach(s => { s.w = snapU(s.w, "lb"); }));
   saveDraft(true);
   S.view = "workout"; render(); window.scrollTo(0,0); wake();
 }
@@ -1058,9 +1069,9 @@ function exportText(pretty){
 /* ===== синхронизация с приватным репозиторием GitHub ===== */
 const csvCell = v => { const t = String(v ?? ""); return /[",\n;]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
 function csvText(){
-  const rows = [["date","week","block","day","exercise_id","exercise","set","weight_kg","reps","rir","heavy_watch","session_note"]];
+  const rows = [["date","week","block","day","exercise_id","exercise","set","weight_kg","reps","rir","heavy_watch","session_note","gym_unit"]];
   for (const s of sortedSessions().reverse()) for (const e of s.ex || []) e.sets.forEach((x, j) => {
-    if (x.done) rows.push([s.date, s.week, s.block || "", s.dayName, e.id, e.name, j + 1, num(x.w) ?? "", x.r, x.q ?? "", s.heavy ? 1 : 0, s.note || ""]);
+    if (x.done) rows.push([s.date, s.week, s.block || "", s.dayName, e.id, e.name, j + 1, num(x.w) == null ? "" : Math.round(num(x.w) * 100) / 100, x.r, x.q ?? "", s.heavy ? 1 : 0, s.note || "", s.unit || "kg"]);
   });
   return rows.map(r => r.map(csvCell).join(",")).join("\n") + "\n";
 }
@@ -1218,6 +1229,12 @@ document.addEventListener("click", ev => {
     case "home": S.view = "home"; render(); break;
     case "resume": S.view = "workout"; render(); wake(); break;
     case "place": S.settings.place = b.dataset.place; saveAll(); render(); break;
+    case "unit": {
+      const d = S.draft, u = b.dataset.v === "lb" ? "lb" : "kg"; if (!d || (d.unit || "kg") === u) break;
+      d.unit = u; S.settings.unitByPlace = Object.assign({}, S.settings.unitByPlace, {[d.place]: u});
+      d.ex.forEach(e => e.sets.forEach(s => { if (!s.done && s.w !== "" && s.w != null) s.w = snapU(s.w, u); }));
+      saveDraft(true); saveAll(); render(); toast(u === "lb" ? "Веса в фунтах (lb). В журнал всё равно пишется в кг" : "Веса в килограммах"); break;
+    }
     case "start": if (S.draft) { toast("Сначала завершите или отмените текущую тренировку"); S.view = "workout"; render(); } else startWorkout(b.dataset.day); break;
     case "done": {
       try { if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)(); audio.resume && audio.resume(); } catch(e){}
@@ -1294,7 +1311,7 @@ document.addEventListener("input", ev => {
   if (f === "note") { S.draft.note = t.value; saveDraft(); return; }
   if (f === "w" || f === "r" || f === "q") {
     const s = S.draft.ex[+t.dataset.i].sets[+t.dataset.j];
-    s[f] = f === "w" ? (num(t.value) ?? "") : t.value.replace(/\D/g, "");
+    s[f] = f === "w" ? (fromU(num(t.value), S.draft.unit) ?? "") : t.value.replace(/\D/g, "");
     saveDraft();
   }
 });
