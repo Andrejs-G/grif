@@ -1210,10 +1210,18 @@ setInterval(tick, 500);
 let lock = null;
 async function wake(){ try { if (navigator.wakeLock && !lock) { lock = await navigator.wakeLock.request("screen"); lock.addEventListener("release", () => lock = null); } } catch(e){} }
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && S.view === "workout") wake(); });
+const pairOf = e => /[ab]$/.test(e.grp) ? S.draft.ex.find(x => x.grp === e.grp.slice(0,-1) + (e.grp.endsWith("a") ? "b" : "a")) : null;
+// rest after a set: inside a superset go straight to the partner; once the partner has no sets left
+// (uneven supersets, e.g. 3 + 2), the remaining sets get the superset's rest so the timer still runs
+function restAfter(e){
+  const pair = pairOf(e), own = e.target.rest || 0;
+  if (!pair || pair.sets.some(s => !s.done)) return own;
+  return Math.max(own, pair.target.rest || 0);
+}
 function nextLabel(i, j){
   const ex = S.draft.ex, e = ex[i];
   // superset: a → b of the same number, then back to a
-  const pair = /[ab]$/.test(e.grp) ? ex.find(x => x.grp === e.grp.slice(0,-1) + (e.grp.endsWith("a") ? "b" : "a")) : null;
+  const pair = pairOf(e);
   if (pair && pair.sets.some(s => !s.done)) return `${pair.grp} ${pair.name}`;
   const n = ex.slice(i).find(x => x.sets.some(s => !s.done));
   return n ? `${n.grp} ${n.name}` : "завершение";
@@ -1243,7 +1251,8 @@ document.addEventListener("click", ev => {
       if (s.done) {
         if (s.r === "") { const [lo] = range(e.target.reps); if (lo) s.r = String(lo); }
         const nx = e.sets[j+1]; if (nx && (nx.w === "" || nx.w == null)) nx.w = s.w;
-        if (e.target.rest) startTimer(e.target.rest, nextLabel(i, j)); else S.timer = {superset:true, label: nextLabel(i, j)};
+        const rest = restAfter(e);
+        if (rest) startTimer(rest, nextLabel(i, j)); else S.timer = {superset:true, label: nextLabel(i, j)};
       }
       saveDraft(true); render(); break;
     }
