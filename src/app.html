@@ -178,7 +178,7 @@ select{padding:10px;font-size:16px}
 
 <script>
 /* ===== Программа 4.0: верх / низ, 4 тренировки, 12 недель (из andrey_program_12_weeks.xlsx) ===== */
-const PROGRAM_VERSION = "4.3";
+const PROGRAM_VERSION = "4.4";
 const START_DEFAULT = "2026-10-12";
 const BLOCKS = {
   b1:{name:"Б1 Накопление", color:"green", k:0},
@@ -1072,6 +1072,45 @@ function viewProgram(){
 }
 
 /* ===== workout actions ===== */
+/* Морской зал в lb: самый малый блин 5 lb, штанга растёт шагом 10 lb (гриф 45 lb + пары блинов) */
+const BAR_EX = new Set(["bench","squat","rdl","cg-bench","bb-curl","hip-thrust"]);
+const BAR_MAIN = new Set(["bench","squat","rdl","cg-bench"]);
+const BAR_LB = 45;
+const barDown = lb => Math.max(BAR_LB, BAR_LB + 10 * Math.floor((lb - BAR_LB) / 10 + 1e-6));
+const barUp = lb => Math.max(BAR_LB, BAR_LB + 10 * Math.ceil((lb - BAR_LB) / 10 - 1e-6));
+const repsPlus = r => String(r).replace(/\d+/g, n => +n + 1);
+function gymWeight(e, d){
+  const b = e.base; if (!b) return null;
+  e.target.reps = b.reps; e.hint = b.hint; e.up = b.up;
+  const kg = num(b.w);
+  if (kg == null) return b.w;
+  if (!(d.place === "sea" && d.unit === "lb")) return d.unit === "lb" ? snapU(kg, "lb") : kg;
+  if (BAR_EX.has(e.id)) {
+    const lb = b.up ? barUp(kg / LB) : barDown(kg / LB), w = fromU(lb, "lb");
+    if (b.up && !e.main) { e.hint = `+10 lb: в прошлый раз верх диапазона во всех подходах. Начните снова с ${range(b.reps)[0]} повт.`; return w; }
+    if (e.main) e.hint = b.hint.replace("+2,5 кг сразу", "+10 lb сразу");
+    if (BAR_MAIN.has(e.id) && w <= kg * 0.98) { e.target.reps = repsPlus(b.reps); e.hint = e.hint + ` Морской зал: вес округлён вниз до ${lb} lb, +1 повтор в каждом подходе.`; }
+    else if (e.main) e.hint += ` Морской зал: ${lb} lb.`;
+    return w;
+  }
+  if (e.id === "pullup") {
+    const bw = S.settings.bw, load = Math.max(0, kg - bw);
+    let lb = 5 * Math.floor(load / LB / 5 + 1e-6), note = "";
+    const lw = e.last && e.last.sets.map(x => num(x.w)).filter(x => x != null);
+    if (lw && lw.length) {
+      const lastLb = 5 * Math.round(Math.max(0, Math.max(...lw) - bw) / LB / 5);
+      const fail = e.last.sets.some(x => x.q !== "" && x.q != null && num(x.q) < 1);
+      if (lb > lastLb && fail) { lb = lastLb; note = " В прошлый раз был отказ (запас 0): груз не прибавляем, +5 lb только когда во всех подходах запас 1+."; }
+      else if (lb > lastLb + 5) { lb = lastLb + 5; note = " Прибавляем не больше 5 lb за тренировку."; }
+    }
+    e.hint = `Морской зал: груз на поясе ${lb} lb (шаг 5 lb).${note}`;
+    return bw + fromU(lb, "lb");
+  }
+  return snapU(kg, "lb");
+}
+function applyGym(d){
+  d.ex.forEach(e => { if (!e.base) return; const w = gymWeight(e, d); e.sets.forEach(s => { if (!s.done) s.w = w; }); });
+}
 function startWorkout(dayId){
   const day = program.days.find(d => d.id === dayId); if (!day) return;
   const w = curWeek();
@@ -1083,12 +1122,13 @@ function startWorkout(dayId){
     ex: exs.map(e => {
       const t = target(e, w), last = lastFor(e.id, e.since), sg = suggest(e, t, w, last);
       if (S.heavyWatch && !t.light) t.rir = "3";
-      return {id: e.id, grp: e.grp, name: e.main ? e.name : e.name, alt: e.alt || "", note: e.note || "", inc: e.inc,
+      return {id: e.id, grp: e.grp, name: e.name, main: !!e.main, alt: e.alt || "", note: e.note || "", inc: e.inc,
+        base: {w: sg.w, reps: t.reps, hint: sg.hint, up: !!sg.up},
         target: {sets:t.sets, reps:t.reps, rir:t.rir, rest:t.rest}, last, hint: sg.hint, up: sg.up, coach: !!sg.coach,
         sets: Array.from({length: t.sets}, () => ({w: sg.w, r: "", q: "", done: false}))};
     })
   };
-  if (S.draft.unit === "lb") S.draft.ex.forEach(e => e.sets.forEach(s => { s.w = snapU(s.w, "lb"); }));
+  applyGym(S.draft);
   saveDraft(true);
   S.view = "workout"; render(); window.scrollTo(0,0); wake();
 }
@@ -1282,7 +1322,8 @@ document.addEventListener("click", ev => {
     case "unit": {
       const d = S.draft, u = b.dataset.v === "lb" ? "lb" : "kg"; if (!d || (d.unit || "kg") === u) break;
       d.unit = u; S.settings.unitByPlace = Object.assign({}, S.settings.unitByPlace, {[d.place]: u});
-      d.ex.forEach(e => e.sets.forEach(s => { if (!s.done && s.w !== "" && s.w != null) s.w = snapU(s.w, u); }));
+      d.ex.forEach(e => { if (!e.base) e.sets.forEach(s => { if (!s.done && s.w !== "" && s.w != null) s.w = snapU(s.w, u); }); });
+      applyGym(d);
       saveDraft(true); saveAll(); render(); toast(u === "lb" ? "Веса в фунтах (lb). В журнал всё равно пишется в кг" : "Веса в килограммах"); break;
     }
     case "start": if (S.draft) { toast("Сначала завершите или отмените текущую тренировку"); S.view = "workout"; render(); } else startWorkout(b.dataset.day); break;
