@@ -192,7 +192,7 @@ select{padding:10px;font-size:16px}
 
 <script>
 /* ===== Программа 4.0: верх / низ, 4 тренировки, 12 недель (из andrey_program_12_weeks.xlsx) ===== */
-const PROGRAM_VERSION = "4.2";
+const PROGRAM_VERSION = "4.3";
 const START_DEFAULT = "2026-10-12";
 const BLOCKS = {
   b1:{name:"Б1 Накопление", color:"green", k:0},
@@ -231,7 +231,7 @@ const DEFAULT_PROGRAM = {
       {id:"pullup", grp:"2", main:true, name:"Подтягивания с отягощением", rest:150, inc:2.5, note:"Вес = вес тела + груз. Полная амплитуда, без рывка."},
       {id:"chest-row", grp:"3", name:"Тяга с упором грудью", alt:"Тяга гантели с упором в наклонную скамью", sets:[3,3,3], reps:"8–12", rir:"2", rest:120, inc:2, note:"Толщина спины. Корпус неподвижен."},
       {id:"incline", grp:"4", name:"Жим гантелей на наклоне 30°", sets:[2,3,2], reps:"8–12", rir:"2", rest:120, inc:2, note:"Старт 20–21 кг."},
-      {id:"lateral", grp:"5a", name:"Махи в стороны", alt:"Махи в нижнем блоке или гантели", sets:[3,3,3], reps:"12–20", rir:"0–1", rest:0, inc:1, note:"Старт 8–9 кг."},
+      {id:"lateral", grp:"5a", name:"Махи в стороны в кроссовере", alt:"", sets:[3,3,3], reps:"20–25", rir:"0–1", rest:0, inc:2.5, stack:true, since:"2026-11-25", note:"Нижний блок, одной рукой, рукоять за спиной. 25 во всех подходах: +1 деление и снова с 20."},
       {id:"oh-ext", grp:"5b", name:"Разгибание рук над головой", alt:"Канат в кроссовере", sets:[3,3,3], reps:"10–15", rir:"1", rest:90, inc:2.5, note:"Локти вверх, глубокое растяжение."},
       {id:"bb-curl", grp:"6", name:"Сгибание рук со штангой / EZ", alt:"Штанга или канат в кроссовере", sets:[3,3,3], reps:"8–12", rir:"1", rest:75, inc:2.5, note:"Если не успеваете в 65 минут, пропустите."}
     ]},
@@ -251,7 +251,7 @@ const DEFAULT_PROGRAM = {
       {id:"cable-row", grp:"4", name:"Горизонтальная тяга", alt:"Нижний блок кроссовера или тяга штанги в наклоне", sets:[3,4,3], reps:"8–12", rir:"2", rest:120, inc:2.5, note:"Локоть к бедру, пауза 1 с."},
       {id:"incline-curl", grp:"5a", name:"Сгибание рук на наклонной скамье", sets:[3,4,3], reps:"8–12", rir:"1", rest:0, inc:1},
       {id:"pushdown", grp:"5b", name:"Разгибание рук на блоке", alt:"Кроссовер", sets:[3,4,3], reps:"10–15", rir:"1", rest:90, inc:2.5},
-      {id:"lateral", grp:"6a", name:"Махи в стороны", alt:"Махи в нижнем блоке или гантели", sets:[3,3,3], reps:"12–20", rir:"0–1", rest:0, inc:1},
+      {id:"lateral", grp:"6a", name:"Махи в стороны в кроссовере", alt:"", sets:[3,3,3], reps:"20–25", rir:"0–1", rest:0, inc:2.5, stack:true, since:"2026-11-25", note:"Нижний блок, одной рукой, рукоять за спиной. 25 во всех подходах: +1 деление и снова с 20."},
       {id:"reardelt", grp:"6b", name:"Обратная разводка / face pull", alt:"Face pull с канатом в кроссовере", sets:[3,3,3], reps:"15–20", rir:"1", rest:60, inc:2.5}
     ]},
     {id:"D4", name:"Д4", title:"Пресс и бока + ноги", time:"~45 мин", ex:[
@@ -326,15 +326,14 @@ const TECH = {
     "Неполная амплитуда внизу.",
     "Взяли тяжело: 23 кг × 7 с запасом 1 — ниже диапазона. Старт 20–21 кг."]},
   "lateral": {how:[
-    "Лёгкий наклон корпуса вперёд, локти чуть согнуты.",
-    "Поднимайте руки в стороны через локти до уровня плеч.",
-    "Кисть не выше локтя, мизинец не задирайте.",
-    "Опускайте медленно 2 с, внизу не расслабляйтесь.",
-    "Последний подход доводите почти до отказа (запас 0–1)."],
+    "Нижний блок кроссовера, встаньте боком, рукоять в дальней руке, трос проходит за спиной.",
+    "Лёгкий наклон корпуса к стойке, локоть чуть согнут.",
+    "Поднимайте руку в сторону через локоть до уровня плеча, кисть не выше локтя.",
+    "Опускайте медленно 2 с, внизу не давайте стеку лечь.",
+    "Все повторы одной рукой, потом другой. Последний подход почти до отказа (запас 0–1)."],
    err:["Раскачка корпусом и рывок.",
-    "Плечи поднимаются к ушам: работает трапеция.",
-    "Слишком лёгкий вес с большим запасом: роста не будет."],
-   sea:"Махи в нижнем блоке кроссовера одной рукой: трос за спиной или перед телом, нагрузка постоянная по всей амплитуде."},
+    "Плечо поднимается к уху: работает трапеция.",
+    "Добавляете вес раньше, чем 25 повторов во всех подходах."]},
   "oh-ext": {how:[
     "Стоя спиной к блоку, канат за головой, корпус чуть наклонён вперёд.",
     "Локти смотрят вперёд-вверх и не двигаются.",
@@ -789,8 +788,9 @@ function target(ex, w){
   return {sets, reps: ex.reps, rir, rest: ex.rest, light: !!B.light};
 }
 function sortedSessions(){ return [...S.sessions].sort((a,b) => (b.date + String(b.startedAt||0).padStart(15,"0")) > (a.date + String(a.startedAt||0).padStart(15,"0")) ? 1 : -1); }
-function lastFor(exId){
+function lastFor(exId, since){
   for (const s of sortedSessions()) {
+    if (since && s.date < since) break;
     const e = (s.ex || []).find(x => x.id === exId);
     if (e) { const done = e.sets.filter(x => x.done && (num(x.w) != null || x.r)); if (done.length) return {date:s.date, week:s.week, unit:s.unit || "kg", sets:done}; }
   }
@@ -818,6 +818,7 @@ function suggestPlan(ex, t, w, last){
   const [, hi] = range(t.reps);
   const topSets = last.sets.filter(s => num(s.w) === top);
   const allHit = topSets.length >= t.sets && topSets.every(s => (num(s.r) || 0) >= hi);
+  if (allHit && ex.inc && ex.stack) return {w: top + ex.inc, up:true, hint: `+1 деление стека: в прошлый раз ${hi} повт. во всех подходах. Начните снова с ${range(t.reps)[0]}.`};
   if (allHit && ex.inc) return {w: top + ex.inc, up:true, hint: `+${fmtW(ex.inc)} кг: в прошлый раз ${hi} повт. во всех подходах.`};
   return {w: top, up:false, hint: `Тот же вес: доведите до ${hi} повт. во всех подходах.`};
 }
@@ -1094,7 +1095,7 @@ function startWorkout(dayId){
     id: "s" + Date.now().toString(36), dayId, dayName: day.name, title: day.title, week: w, block: WEEKS[w-1].b,
     place: S.settings.place, unit: unitFor(S.settings.place), heavy: S.heavyWatch, date: todayISO(), startedAt: Date.now(), note: "",
     ex: exs.map(e => {
-      const t = target(e, w), last = lastFor(e.id), sg = suggest(e, t, w, last);
+      const t = target(e, w), last = lastFor(e.id, e.since), sg = suggest(e, t, w, last);
       if (S.heavyWatch && !t.light) t.rir = "3";
       return {id: e.id, grp: e.grp, name: e.main ? e.name : e.name, alt: e.alt || "", note: e.note || "", inc: e.inc,
         target: {sets:t.sets, reps:t.reps, rir:t.rir, rest:t.rest}, last, hint: sg.hint, up: sg.up, coach: !!sg.coach,
